@@ -1,6 +1,3 @@
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FunctionalDependencies #-}
 module Main where
 
 import           Control.Applicative
@@ -17,12 +14,44 @@ import           Debug.Trace
 
 
 main :: IO ()
-main = run defaultConfig $ render <$> W.dimensions <*> stepper
+main = run defaultConfig $ render <$> W.dimensions <*> gameSignal
+
+gameSignal :: Signal Game
+gameSignal = foldp step initialGame $ (,) <$> enemiesSignal <*> playerSignal
   where
-    stepper = foldp step game $ (,) <$> M.position <*> every second
-    game = Game { _player = Player 0 0
-                , _enemies = []
-                , _rng = mkStdGen 10 }
+    initialGame = Game { _player = Player 0 0
+                       , _enemies = []
+                       , _rng = mkStdGen 10 }
+    step :: ([Enemy], Player) -> Game -> Game
+    step (es, p) game = game { _player = p
+                             , _enemies = es }
+
+enemiesSignal :: Signal [Enemy]
+enemiesSignal = foldp step [Enemy 100 100 E] (fps 30)
+  where
+    step dt = map (moveE dt)
+    moveE dt e = case e^.direction of
+                N -> e & y -~ dt * 0.4
+                S -> e & y +~ dt * 0.4
+                E -> e & x +~ dt * 0.4
+                W -> e & x -~ dt * 0.4
+
+playerSignal :: Signal Player
+playerSignal = foldp step (Player 0 0) $ M.position
+  where
+    step :: (Int, Int) -> Player -> Player
+    step (mx, my) _ = Player (realToFrac mx) (realToFrac my)
+
+--spaWn = do
+--    g <- gets _rng
+--    let (v, g') = randomR (0, 10) g :: (Int, StdGen)
+--    rng .= (traceShow v $ g')
+--    case v of
+--        1 -> enemies %= (Enemy 200 200 N :)
+--        2 -> enemies %= (Enemy 200 200 S :)
+--        3 -> enemies %= (Enemy 200 200 E :)
+--        4 -> enemies %= (Enemy 200 200 W :)
+--        _ -> return ()
 
 render :: (Int, Int) -> Game -> Element
 render (w, h) game = collage w h $ playerR : enemiesR
@@ -31,24 +60,3 @@ render (w, h) game = collage w h $ playerR : enemiesR
     enemies' = game ^. enemies
     playerR = move (player'^.x, player'^.y) . filled white $ square 40
     enemiesR = map (\e -> move (e^.x, e^.y) . filled red $ square 40) enemies'
-
-step :: ((Int, Int), Time) -> Game -> Game
-step ((dx, dy), time) = execState $ do
-    player . x .= realToFrac dx
-    player . y .= realToFrac dy
-    spaWn
-    enemies %= over mapped moveE
-  where
-    moveE :: Enemy -> Enemy
-    moveE e = case e^.direction of
-                N -> e & y -~ 1
-                S -> e & y +~ 1
-                E -> e & x +~ 1
-                W -> e & x -~ 1
-spaWn = do
-    g <- gets _rng
-    let (v, g') = randomR (0, 100) g :: (Int, StdGen)
-    rng .= g'
-    case v of
-        50 -> enemies %= (Enemy 100 100 N :)
-        _ -> return ()
