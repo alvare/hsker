@@ -3,44 +3,67 @@ module Main where
 import           Control.Applicative
 import           Control.Monad.State.Strict
 import           Control.Lens
-import           FRP.Helm
-import           FRP.Helm.Time
-import qualified FRP.Helm.Mouse as M
-import qualified FRP.Helm.Window as W
+import           Data.List.Lens
+import           Graphics.Gloss.Interface.Pure.Game
 import           System.Random
 
 import           Types
 import           Debug.Trace
 
 
+initialGame = Game { _player = Player 0 0
+                   , _enemies = []
+                   , _rng = mkStdGen 10
+                   , _timer = 0}
+
 main :: IO ()
-main = run defaultConfig $ render <$> W.dimensions <*> gameSignal
+main = play (InWindow "Hskr" (640, 480) (30, 30))
+            black
+            60
+            initialGame
+            render
+            handle
+            update
 
-gameSignal :: Signal Game
-gameSignal = foldp step initialGame $ (,) <$> enemiesSignal <*> playerSignal
+render :: Game -> Picture
+render g = Pictures $ (playerR $ g^.player) : (enemyR <$> g^.enemies)
   where
-    initialGame = Game { _player = Player 0 0
-                       , _enemies = []
-                       , _rng = mkStdGen 10 }
-    step :: ([Enemy], Player) -> Game -> Game
-    step (es, p) game = game { _player = p
-                             , _enemies = es }
+    playerR p = drawP `moved` (p^.x, p^.y)
+    drawP = color white $ rectangleSolid 50 50
 
-enemiesSignal :: Signal [Enemy]
-enemiesSignal = foldp step [Enemy 100 100 E] (fps 30)
-  where
-    step dt = map (moveE dt)
-    moveE dt e = case e^.direction of
-                N -> e & y -~ dt * 0.4
-                S -> e & y +~ dt * 0.4
-                E -> e & x +~ dt * 0.4
-                W -> e & x -~ dt * 0.4
+    enemyR e = drawE `moved` (e^.x, e^.y)
+    drawE = color red $ rectangleSolid 50 50
 
-playerSignal :: Signal Player
-playerSignal = foldp step (Player 0 0) $ M.position
+    p `moved` (x', y') = translate x' y' p
+
+handle :: Event -> Game -> Game
+handle (EventMotion (dx, dy)) = execState $ do
+    player .= Player dx dy
+    me <- updateTimer
+    case me of
+        Just e -> enemies <>= [Enemy 100 100 E]
+        Nothing -> return ()
   where
-    step :: (Int, Int) -> Player -> Player
-    step (mx, my) _ = Player (realToFrac mx) (realToFrac my)
+    updateTimer = do
+        timer += 1
+        timer' <- gets _timer
+        case timer' > 100 of
+            True -> do
+                    timer .= 0
+                    return . Just $ Enemy 0 0 E
+            False -> return Nothing
+
+handle _ = id
+
+update :: Float -> Game -> Game
+update dt = execState $ do
+    enemies %= over mapped moveE
+  where
+    moveE e = case e^.direction of
+                N -> e & y -~ dt * 50
+                S -> e & y +~ dt * 50
+                E -> e & x +~ dt * 50
+                W -> e & x -~ dt * 50
 
 --spaWn = do
 --    g <- gets _rng
@@ -52,11 +75,3 @@ playerSignal = foldp step (Player 0 0) $ M.position
 --        3 -> enemies %= (Enemy 200 200 E :)
 --        4 -> enemies %= (Enemy 200 200 W :)
 --        _ -> return ()
-
-render :: (Int, Int) -> Game -> Element
-render (w, h) game = collage w h $ playerR : enemiesR
-  where
-    player' = game ^. player
-    enemies' = game ^. enemies
-    playerR = move (player'^.x, player'^.y) . filled white $ square 40
-    enemiesR = map (\e -> move (e^.x, e^.y) . filled red $ square 40) enemies'

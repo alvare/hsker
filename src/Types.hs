@@ -3,26 +3,28 @@
 {-# LANGUAGE FunctionalDependencies #-}
 module Types where
 
-import FRP.Helm.Time (Time)
 import Control.Lens
 import System.Random
 
 data Game = Game { _player :: Player
                  , _enemies :: [Enemy]
-                 , _rng :: StdGen }
+                 , _rng :: StdGen
+                 , _timer :: Int }
     deriving Show
 
-data Player = Player { _playerX :: Double
-                     , _playerY :: Double }
+data Player = Player { _playerX :: Float
+                     , _playerY :: Float }
     deriving Show
 
 data Direction = N | S | E | W deriving Show
-data Enemy = Enemy { _enemyX :: Double
-                   , _enemyY :: Double
+data Enemy = Enemy { _enemyX :: Float
+                   , _enemyY :: Float
                    , _direction :: Direction }
     deriving Show
 
 $(makeLenses ''Game)
-$(makeFields ''Player)
+$(makeLenses ''Player)
 $(makeLenses ''Enemy)
+
+$(makeFields ''Player)
 $(makeFields ''Enemy)
